@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+   # Setting Redis service.
+  redis:
+    image: redis:7.2-alpine
+    container_name: finelife-redis # Version for "Potatoes"
+    restart: always  # Restart when laptop turned on
+    ports:
+      - "6379:6379"  # Open port 6379 for Node.js and Python
+    volumes:
+      - redis_data:/data # Keep the data in the message queue if the container restart
+    command: redis-server --appendonly yes # Open safe mode for storage to prevent lost
+  mongodb: 
+    image: mongo:4.4
+    container_name: finelife-report-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+volumes:
+  redis_data:
+  mongo_data:
