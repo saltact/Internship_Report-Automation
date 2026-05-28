@@ -1,0 +1,85 @@
+.upload-container{
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+
+.upload-title {
+    margin-top: 0;
+    color: #003366;
+}
+
+.upload-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.input-label {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.date-input {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.file-input {
+    padding: 6px;
+}
+
+.submit-btn {
+    padding: 10px 20px;
+    background: #003366;
+    color:white;
+    border:none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight:bold;
+    transition: background 0.2s;
+}
+
+.submit-btn:hover {
+    background: #002244;
+}
+
+.submit-btn:disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+@media screen and (max-width: 768px) {
+    .upload-form{
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .input-group {
+        width: 100%;
+    }
+
+    .date-input,
+    .file-input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .submit-btn {
+        width: 100%;
+        padding: 15px;
+        margin-top: 5px;
+    }
+}
