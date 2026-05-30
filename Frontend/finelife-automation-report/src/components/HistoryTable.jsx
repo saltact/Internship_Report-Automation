@@ -89,7 +89,7 @@ function HistoryTable({ refreshTrigger }) {
 
             {totalPages > 1 && (
                 <div className="pagination-controls">
-                    <button onClick={handlePrevPage} disabled={curentPage === 1 || loading}>
+                    <button onClick={handlePrevPage} disabled={currentPage === 1 || loading}>
                         &laquo; Previous page
                     </button>
                     <span>Page #: {currentPage} / {totalPages}</span>

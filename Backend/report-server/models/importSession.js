@@ -5,7 +5,7 @@ const importSessionSchema = new mongoose.Schema({
     status: String,
     ngay_giao_dich: String,
     file_hash: String,
-    uploaded_at: {type: Date, default: Date.now}
+    uploaded_at: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('ImportSession', importSessionSchema);

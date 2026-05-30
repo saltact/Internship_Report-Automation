@@ -1,85 +1,112 @@
 const XLSX = require('xlsx');
+const crypto = require('crypto');
 const ImportSession = require('../models/importSession');
 const SalesData = require('../models/salesData');
-const {client} = require('../config/redis');
-const crypto = require('crypto');
+const RawSalesData = require('../models/rawSalesData');
+const { client } = require('../config/redis');
 
-const uploadExcel = async(req,res) => {
+const uploadExcel = async (req, res) => {
     try {
-        const {ngayGiaoDich} = req.body;
-        if(!ngayGiaoDich) return res.status(400).json({error:"Missing imported date!"});
-        if(!req.file) return res.status(400).json({error: "Missing Excel file!"});
-        console.log(`Starting to processing file: ${req.file.originalname} for the day of ${ngayGiaoDich}`);
+        if (!req.file) {
+            return res.status(400).json({ error: 'Missing Excel file.' });
+        } 
 
-        // 1. Hasing for prevent duped files while uploadaing
-        const fileHash = crypto.createHash('md5').update(req.file.buffer).digest('hex');
+        const { ngayGiaoDich } = req.body;
+        const nhanVienId = req.body.nhan_vien_id || 'NV_ADMIN';
 
-        // 2. Checking if the file have been uploaded before?
-        const existingSession = await ImportSession.findOne({file_hash: fileHash});
-        if (existingSession){
+        if (!ngayGiaoDich) {
+            return res.status(400).json({ error: 'Please enter the imported date.' })
+        }
+
+        const fileBuffer = req.file.buffer;
+        const fileHash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+
+        const existingSession = await ImportSession.findOne({ file_hash: fileHash });
+        if (existingSession) {
             return res.status(409).json({
-                error: `This file have already been uploaded to the database at ${existingSession.ngay_giao_dich}! Please don't reupload the same file.`
+                error: 'This file was already uploaded the day before. Please check the import history again!'
             });
         }
+        const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-        console.log(`Getting file: ${req.file.originalname} for the day of ${ngayGiaoDich}`);
-
-        // 3. Overwriting existed raw data of this day (if have)
-        const deleteResult = await SalesData.deleteMany ({ngay_giao_dich: ngayGiaoDich});
-        if (deleteResult.deletedCount > 0){
-            console.log(`⚠️ Done cleaning ${deleteResult.deletedCount} rows of old data at ${ngayGiaoDich} for overwriting`)
+        if (!sheetData || sheetData.length === 0) {
+            return res.status(400).json({ error: 'Wrong formatted file. No SKU column detected!' });
         }
 
 
-        const session = await ImportSession.create({
+        const newSession = await ImportSession.create({
             file_name: req.file.originalname,
-            status:'processing',
+            file_hash: fileHash,
             ngay_giao_dich: ngayGiaoDich,
-            file_hash: fileHash
+            nhan_vien_id: nhanVienId,
+            trang_thai: 'Successfully'
         });
-    
-    const workbook = XLSX.read(req.file.buffer, {type:'buffer'});
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rawRows = XLSX.utils.sheet_to_json(worksheet);
 
-    const documents = [];
-    for (let row of rawRows){
-        if(row['SKU']){
-            documents.push({
-                session_id: session._id,
+        const rawDataArray = [];
+        const cleanDataArray = [];
+
+        const parseNumber = (val) => {
+            if (val === undefined || val === null || val === '') return 0;
+            if (typeof val === 'number') return val;
+
+            const cleanString = String(val).replace(/,/g, '').replace(/\s/g, '');
+            return isNaN(parsed) ? 0 : parsedl
+        };
+
+        sheetData.forEach((row) => {
+            
+            const sku_excel = row['SKU'] || row['sku'];
+            if(!sku_excel) return;
+            
+            const ma_st_excel = row['Mã ST'] || row['ma_st'] || 'UNKNOWN';
+            const ten_hang_excel =  row['Tên Hàng'] || row['ten_hang'];
+            const dvb_excel = row['ĐVB'] || row['dvb'] || 'EA';
+            const ma_ncc_excel = row['Mã NCC'] || row['ma_ncc'] || 'UNKNOWN';
+
+            rawDataArray.push({
+                session_id: newSession._id,
                 ngay_giao_dich: ngayGiaoDich,
-                ma_st: row['Mã ST']?.toString().trim(),
-                sku:row['SKU']?.toString().trim(),
-                ten_hang: row['Tên Hàng']?.toString().trim(),
-                ma_ncc: row['Mã NCC']?.toString().trim(),
-                sl:parseFloat(row['SL']) ||  0,
-                dvb:row['ĐVB']?.toString().trim(),
-                tt_ban:parseFloat(row['TT.Bán']?.toString().replace(/,/g, '')) ||row['TT.Ban']?.toString().replace(/,/g, '') || 0,
-                tt_vat: parseFloat(row['TT.VAT']?.toString().replace(/,/g, '')) || 0,
+                ma_st: ma_st_excel,
+                raw_payload: row
             });
-        }
-    }
-    if (documents.length > 0) {
-        await SalesData.insertMany(documents);
-        console.log(`Saved ${documents.length} rows sucessfully to DB.`);
-    }
 
-    await client.lPush('excel_tasks', session._id.toString());
-    console.log(` Pushed task [${session._id}] into Queue for worker!`);
+            cleanDataArray.push({
+                session_id: newSession._id,
+                ngay_giao_dich: ngayGiaoDich,
+                ma_st: ma_st_excel,
+                sku: sku_excel,
+                ten_hang: ten_hang_excel,
+                dvb: dvb_excel,
+                ma_ncc: ma_ncc_excel,
+                sl: parseNumber(row['SL'] || row['sl']) || 0,
+                tt_ban: parseNumber(row['TT.Bán'] || row['tt_ban']) || 0,
+                tt_vat: parseNumber(row['TT.VAT'] || row['tt_vat']) || 0,
+            });
+        });
 
-    res.status(200).json({message: "Import sucessfully", session_id:session._id});
-    } catch(err){
-        console.error(err);
-        res.status(500).json({error:err.message});
+        await Promise.all([
+            RawSalesData.insertMany(rawDataArray),
+            SalesData.insertMany(cleanDataArray)
+        ]);
+
+        return res.status(200).json({
+            message: `Uploading file successfully! Added ${cleanDataArray.length} rows`,
+            sessiond_id: newSession._id
+        });
+    } catch (error) {
+        console.error('Uploading Error:', error);
+        return res.status(500).json({ error: 'Server error while handling Excel file.' });
     }
 };
 
-const getLatestHistory = async(req,res) => {
+const getLatestHistory = async (req, res) => {
     try {
-        const latest = await ImportSession.findOne().sort({uploaded_at: -1});
+        const latest = await ImportSession.findOne().sort({ uploaded_at: -1 });
         res.json(latest);
-    }catch (err){
-        res.status(500).json({error: err.message});
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 }
 
@@ -96,10 +123,10 @@ const getAllSalesData = async (req, res) => {
         }
 
         const data = await SalesData.find(filter)
-            .sort({ngay_giao_dich: -1})
+            .sort({ ngay_giao_dich: -1 })
             .skip(skip)
             .limit(limit);
-        
+
         const totalRecords = await SalesData.countDocuments(filter);
 
         res.status(200).json({
@@ -112,11 +139,11 @@ const getAllSalesData = async (req, res) => {
             },
             data: data
         });
-    } catch(err) {
+    } catch (err) {
         console.error(err);
-        res.status(500).json({error: err.message});
+        res.status(500).json({ error: err.message });
     }
-} 
+}
 
 
-module.exports = {uploadExcel, getLatestHistory, getAllSalesData};
+module.exports = { uploadExcel, getLatestHistory, getAllSalesData };
